@@ -1051,6 +1051,7 @@ ${'```'}
     copiedCoordinates: 'Coordinates copied',
     copyFailed: 'Could not copy coordinates',
     animation: 'Camera animation',
+    enableAnimation: 'Enable camera animation',
     stop: 'Stop',
     stopName: 'Stop name',
     captureStop: 'Add current view',

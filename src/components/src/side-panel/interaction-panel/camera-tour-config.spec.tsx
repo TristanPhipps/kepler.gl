@@ -3,8 +3,8 @@
 
 import React, {useRef, useState} from 'react';
 import {act, fireEvent, screen} from '@testing-library/react';
-import {MapStateActions, VisStateActions} from '@kepler.gl/actions';
-import {INITIAL_MAP_STATE} from '@kepler.gl/reducers';
+import {MapStateActions, UIStateActions, VisStateActions} from '@kepler.gl/actions';
+import {INITIAL_MAP_STATE, INITIAL_UI_STATE} from '@kepler.gl/reducers';
 import {CameraBookmark, CameraTour} from '@kepler.gl/types';
 import {evaluateCameraTour} from '@kepler.gl/utils';
 import {renderWithTheme, IntlWrapper} from 'test/helpers/component-jest-utils';
@@ -12,6 +12,7 @@ import {MapViewStateContext} from '../../map-view-state-context';
 import {RootContext} from '../../context';
 import CameraTourConfig from './camera-tour-config';
 import CameraBookmarks from './camera-bookmarks';
+import CameraBookmarkControl from '../../map/camera-bookmark-control';
 
 const camera = {longitude: 10, latitude: 20, zoom: 6, bearing: 30, pitch: 45};
 const tour: CameraTour = {
@@ -33,14 +34,17 @@ function setup(
     bookmarks?: CameraBookmark[];
     mapState?: typeof INITIAL_MAP_STATE;
     liveCamera?: typeof camera;
+    floatingBookmarks?: boolean;
   } = {}
 ) {
   const updateMap = jest.fn();
   const commit = jest.fn();
+  const toggle = jest.fn();
   const mapState = options.mapState || {...INITIAL_MAP_STATE, ...camera};
   function Harness() {
     const root = useRef<HTMLDivElement>(null);
     const [value, setValue] = useState(initial);
+    const [enabled, setEnabled] = useState(true);
     return (
       <RootContext.Provider value={root}>
         <div ref={root}>
@@ -56,8 +60,26 @@ function setup(
             mapStateActions={{...MapStateActions, updateMap}}
             visStateActions={VisStateActions}
           />
+          {options.floatingBookmarks && (
+            <CameraBookmarkControl
+              bookmarks={[{id: 'saved', name: 'Saved view', camera}]}
+              mapState={mapState}
+              mapStateActions={{...MapStateActions, updateMap}}
+              mapControls={INITIAL_UI_STATE.mapControls}
+              setMapControlSettings={jest.fn()}
+            />
+          )}
           <CameraTourConfig
             tour={value}
+            enabled={enabled}
+            uiStateActions={{
+              ...UIStateActions,
+              setMapControlVisibility: Object.assign((control: string, show: boolean) => {
+                toggle(control, show);
+                setEnabled(show);
+                return UIStateActions.setMapControlVisibility(control, show);
+              }, UIStateActions.setMapControlVisibility)
+            }}
             bookmarks={options.bookmarks}
             mapState={mapState}
             mapStateActions={{...MapStateActions, updateMap}}
@@ -87,7 +109,7 @@ function setup(
     </IntlWrapper>
   );
   fireEvent.click(screen.getByRole('button', {name: 'Camera animation'}));
-  return {...rendered, updateMap, commit};
+  return {...rendered, updateMap, commit, toggle};
 }
 
 let callbacks: Map<number, FrameRequestCallback>;
@@ -265,17 +287,23 @@ test('search navigation pauses playback while unrelated sidebar pointer events d
   expect(screen.getByRole('button', {name: 'Play'})).toBeInTheDocument();
 });
 
-test('editing, collapsing and unmounting cancel playback', () => {
-  const {unmount} = setup();
+test('editing and unmounting cancel playback while collapsing only hides the editor', () => {
+  const {unmount, updateMap} = setup();
   fireEvent.click(screen.getByRole('button', {name: 'Play'}));
   fireEvent.change(screen.getByRole('textbox', {name: 'Stop name'}), {target: {value: 'Changed'}});
   expect(callbacks.size).toBe(0);
   expect(screen.getByLabelText('Elapsed time')).toHaveTextContent('0 s');
   fireEvent.click(screen.getByRole('button', {name: 'Play'}));
   fireEvent.click(screen.getByRole('button', {name: 'Camera animation'}));
-  expect(callbacks.size).toBe(0);
+  expect(screen.queryByRole('button', {name: 'Pause'})).toBeNull();
+  expect(callbacks.size).toBe(1);
+  frame(1500);
+  expect(updateMap).toHaveBeenLastCalledWith({
+    ...evaluateCameraTour(tour, 1500),
+    transitionDuration: 0
+  });
   fireEvent.click(screen.getByRole('button', {name: 'Camera animation'}));
-  fireEvent.click(screen.getByRole('button', {name: 'Play'}));
+  expect(screen.getByRole('button', {name: 'Pause'})).toBeInTheDocument();
   unmount();
   expect(callbacks.size).toBe(0);
 });
@@ -311,4 +339,55 @@ test('navigating to a saved bookmark pauses the tour before the next frame', () 
   updateMap.mockClear();
   frame(1500);
   expect(updateMap).not.toHaveBeenCalled();
+});
+
+test('disabling pauses immediately, preserves stops and elapsed time, and re-enables paused', () => {
+  const {updateMap, commit, toggle} = setup();
+  const enable = screen.getByRole('checkbox', {name: 'Enable camera animation'});
+  const expand = screen.getByRole('button', {name: 'Camera animation'});
+  expect(enable).toBeChecked();
+  expect(document.getElementById(expand.getAttribute('aria-controls') || '')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'Play'}));
+  frame(1500);
+  const staleCallback = [...callbacks.values()][0];
+  fireEvent.click(enable);
+  expect(toggle).toHaveBeenLastCalledWith('cameraTour', false);
+  expect(enable).not.toBeChecked();
+  expect(expand).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', {name: 'Play'})).toBeDisabled();
+  expect(screen.getByRole('button', {name: 'Restart'})).toBeDisabled();
+  expect(screen.getByRole('button', {name: 'Go to stop 2: Work'})).toBeDisabled();
+  expect(screen.getByRole('slider')).toBeDisabled();
+  updateMap.mockClear();
+  act(() => staleCallback(2000));
+  fireEvent.click(screen.getByRole('button', {name: '2. Work'}));
+  expect(updateMap).not.toHaveBeenCalled();
+  expect(callbacks.size).toBe(0);
+  expect(commit).not.toHaveBeenCalled();
+  expect(screen.getByLabelText('Elapsed time')).toHaveTextContent('1.5 s');
+  expect(screen.getByRole('textbox', {name: 'Stop name'})).toHaveValue('Work');
+  fireEvent.click(expand);
+  fireEvent.click(enable);
+  expect(expand).toHaveAttribute('aria-expanded', 'false');
+  expect(callbacks.size).toBe(0);
+  fireEvent.click(expand);
+  expect(screen.getByRole('button', {name: 'Play'})).toBeEnabled();
+  expect(screen.getByLabelText('Elapsed time')).toHaveTextContent('1.5 s');
+  expect(commit).not.toHaveBeenCalled();
+});
+
+test('floating bookmark navigation outside the map pauses playback before any stale frame', () => {
+  const {updateMap} = setup(tour, {floatingBookmarks: true});
+  const navigate = screen.getByRole('button', {name: 'Saved view'});
+  expect(navigate.closest('.maps')).toBeNull();
+  expect(navigate.closest('.camera-bookmark-panel')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'Play'}));
+  const staleCallback = [...callbacks.values()][0];
+  fireEvent.click(navigate);
+  expect(screen.getByRole('button', {name: 'Play'})).toBeInTheDocument();
+  expect(updateMap).toHaveBeenLastCalledWith(expect.objectContaining({transitionDuration: 1000}));
+  updateMap.mockClear();
+  act(() => staleCallback(1500));
+  expect(updateMap).not.toHaveBeenCalled();
+  expect(callbacks.size).toBe(0);
 });

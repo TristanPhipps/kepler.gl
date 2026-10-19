@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright contributors to the kepler.gl project
 
-import React, {useContext, useState} from 'react';
+import React, {useContext, useId, useState} from 'react';
 import styled from 'styled-components';
 import {useIntl} from 'react-intl';
 import {
@@ -11,27 +11,15 @@ import {
   CameraTourStop,
   MapState
 } from '@kepler.gl/types';
-import {MapStateActions, VisStateActions} from '@kepler.gl/actions';
+import {MapStateActions, UIStateActions, VisStateActions} from '@kepler.gl/actions';
 import {generateHashId} from '@kepler.gl/common-utils';
 import {getCameraSnapshot, normalizeCameraTour} from '@kepler.gl/utils';
-import {
-  Button,
-  Input,
-  PanelContent,
-  PanelHeaderTitle,
-  PanelLabel
-} from '../../common/styled-components';
+import {Button, Input, PanelContent, PanelLabel} from '../../common/styled-components';
 import {MapViewStateContext} from '../../map-view-state-context';
 import useCameraTourPlayback from './use-camera-tour-playback';
+import CameraPanelHeader, {CameraPanel} from './camera-panel-header';
+import {Play} from '../../common/icons';
 
-const Header = styled.button`
-  background: ${props => props.theme.panelBackground};
-  border: 0;
-  padding: 12px;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-`;
 const Actions = styled.div`
   display: flex;
   flex-wrap: wrap;
@@ -85,6 +73,8 @@ const BookmarkSelect = styled.select`
 
 export type CameraTourConfigProps = {
   tour?: CameraTour | null;
+  enabled?: boolean;
+  uiStateActions?: typeof UIStateActions;
   bookmarks?: CameraBookmark[];
   mapState?: MapState;
   mapStateActions?: typeof MapStateActions;
@@ -93,11 +83,14 @@ export type CameraTourConfigProps = {
 
 export default function CameraTourConfig({
   tour,
+  enabled = true,
+  uiStateActions,
   bookmarks = [],
   mapState,
   mapStateActions,
   visStateActions
 }: CameraTourConfigProps) {
+  const panelId = `camera-tour-${useId()}`;
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const intl = useIntl();
@@ -108,7 +101,7 @@ export default function CameraTourConfig({
   const {getInternalViewState} = useContext(MapViewStateContext);
   const readCamera = () => getCameraSnapshot(getInternalViewState()) || getCameraSnapshot(mapState);
   const supported = Boolean(mapState && !mapState.isSplit && !mapState.globe?.enabled);
-  const playback = useCameraTourPlayback(tour, mapStateActions?.updateMap, supported && open);
+  const playback = useCameraTourPlayback(tour, mapStateActions?.updateMap, supported && enabled);
   const stops = tour?.stops || [];
   const selected = stops.find(stop => stop.id === selectedId) || stops[0];
   const selectedIndex = selected ? stops.indexOf(selected) : -1;
@@ -161,12 +154,26 @@ export default function CameraTourConfig({
   };
 
   return (
-    <section className="interaction-camera-tour">
-      <Header type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <PanelHeaderTitle>{message('animation', 'Camera animation')}</PanelHeaderTitle>
-      </Header>
+    <CameraPanel className="interaction-camera-tour">
+      <CameraPanelHeader
+        id={panelId}
+        title={message('animation', 'Camera animation')}
+        enableLabel={message('enableAnimation', 'Enable camera animation')}
+        open={open}
+        enabled={enabled}
+        onToggleOpen={() => setOpen(!open)}
+        onToggleEnabled={
+          uiStateActions
+            ? () => {
+                playback.pause();
+                uiStateActions.setMapControlVisibility('cameraTour', !enabled);
+              }
+            : undefined
+        }
+        Icon={Play}
+      />
       {open && (
-        <PanelContent>
+        <PanelContent id={`${panelId}-content`}>
           {!supported ? (
             <p>{message('singleMap', 'Use a single 2D or 3D map to edit camera views.')}</p>
           ) : (
@@ -314,6 +321,7 @@ export default function CameraTourConfig({
                           secondary
                           small
                           title={stop.name}
+                          disabled={!enabled || !mapStateActions}
                           aria-label={`${message('goToStop', 'Go to stop')} ${index + 1}: ${
                             stop.name
                           }`}
@@ -335,7 +343,7 @@ export default function CameraTourConfig({
                       max={playback.duration}
                       step="any"
                       value={playback.elapsed}
-                      disabled={!playback.duration || !mapStateActions}
+                      disabled={!enabled || !playback.duration || !mapStateActions}
                       aria-label={message('scrub', 'Camera tour time')}
                       aria-valuetext={seconds(playback.elapsed)}
                       onChange={event => playback.seek(Number(event.target.value))}
@@ -354,7 +362,7 @@ export default function CameraTourConfig({
                         type="button"
                         secondary
                         small
-                        disabled={!playback.duration || !mapStateActions}
+                        disabled={!enabled || !playback.duration || !mapStateActions}
                         onClick={playback.playing ? playback.pause : playback.play}
                       >
                         {playback.playing ? message('pause', 'Pause') : message('play', 'Play')}
@@ -363,7 +371,7 @@ export default function CameraTourConfig({
                         type="button"
                         secondary
                         small
-                        disabled={!mapStateActions}
+                        disabled={!enabled || !mapStateActions}
                         onClick={() => playback.seek(0)}
                       >
                         {message('restart', 'Restart')}
@@ -376,6 +384,6 @@ export default function CameraTourConfig({
           )}
         </PanelContent>
       )}
-    </section>
+    </CameraPanel>
   );
 }

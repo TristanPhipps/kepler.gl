@@ -532,3 +532,17 @@ test('#uiStateReducer -> bookmark visibility preserves navigation layout setting
   t.equal(shown.mapControls.cameraBookmarks.show, true, 'can show it again');
   t.end();
 });
+
+test('#uiStateReducer -> camera animation visibility is independent of bookmarks', t => {
+  t.equal(INITIAL_UI_STATE.mapControls.cameraTour.show, true, 'enabled initially');
+  const state = reducer(INITIAL_UI_STATE, setMapControlVisibility('cameraTour', false));
+  t.equal(state.mapControls.cameraTour.show, false, 'disables camera animation');
+  t.deepEqual(
+    state.mapControls.cameraBookmarks,
+    INITIAL_UI_STATE.mapControls.cameraBookmarks,
+    'does not change bookmarks'
+  );
+  const enabled = reducer(state, setMapControlVisibility('cameraTour', true));
+  t.equal(enabled.mapControls.cameraTour.show, true, 'can enable it again');
+  t.end();
+});
