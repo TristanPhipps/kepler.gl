@@ -45,6 +45,7 @@ type ClickedInfo = {
   picked?: boolean;
   index?: number;
   layer?: {id?: string};
+  object?: {points?: Array<{index: number}>};
 } | null;
 type KeplerRootState = {
   keplerGl: Record<
@@ -94,28 +95,38 @@ const mapConfig = {
       layers: [
         {
           id: REGION_LAYER_ID,
-          type: 'point',
+          type: 'hexagon',
           config: {
             dataId: 'cinema-regions',
-            label: 'Regional performance',
+            label: 'Regional performance hexagons',
             color: [246, 181, 68] as [number, number, number],
             columns: {lat: 'latitude', lng: 'longitude'},
             isVisible: true,
             visConfig: {
-              radius: 18,
-              fixedRadius: false,
-              opacity: 0.92,
-              outline: true,
-              thickness: 3,
-              strokeColor: [255, 237, 176] as [number, number, number],
-              allowHover: true
+              opacity: 0.86,
+              worldUnitSize: 65,
+              resolution: 5,
+              colorRange: {
+                name: 'Cinema gold',
+                type: 'sequential',
+                category: 'Custom',
+                colors: ['#3A2030', '#713343', '#B6514E', '#E9854E', '#F6B544', '#FFE7A0']
+              },
+              coverage: 0.88,
+              sizeRange: [0, 500],
+              percentile: [0, 100],
+              elevationPercentile: [0, 100],
+              elevationScale: 10,
+              colorAggregation: 'average',
+              sizeAggregation: 'average',
+              enable3d: true
             }
           },
           visualChannels: {
-            colorField: null,
+            colorField: {name: 'gross', type: 'integer'},
             colorScale: 'quantile',
             sizeField: {name: 'gross', type: 'integer'},
-            sizeScale: 'sqrt'
+            sizeScale: 'linear'
           }
         },
         {
@@ -149,10 +160,7 @@ const mapConfig = {
         tooltip: {
           fieldsToShow: {
             'cinema-regions': [
-              {name: 'label', format: null},
-              {name: 'detail', format: null},
-              {name: 'gross', format: null},
-              {name: 'occupancy', format: null}
+              {name: 'gross', format: null}
             ],
             'cinema-sites': [
               {name: 'label', format: null},
@@ -172,7 +180,7 @@ const mapConfig = {
       latitude: -41.2,
       longitude: 172.7,
       zoom: 4.35,
-      pitch: 0,
+      pitch: 35,
       bearing: 0
     },
     mapStyle: {styleType: 'dark-matter'}
@@ -551,14 +559,14 @@ function MapPanel({
   useEffect(() => {
     const viewport =
       level === 'country'
-        ? {latitude: -41.2, longitude: 172.7, zoom: 4.35}
+        ? {latitude: -41.2, longitude: 172.7, zoom: 4.35, pitch: 35}
         : siteItem
-          ? {latitude: siteItem.latitude, longitude: siteItem.longitude, zoom: 12.8}
+          ? {latitude: siteItem.latitude, longitude: siteItem.longitude, zoom: 12.8, pitch: 0}
           : region
-            ? {latitude: region.latitude, longitude: region.longitude, zoom: 8}
+            ? {latitude: region.latitude, longitude: region.longitude, zoom: 8, pitch: 0}
             : null;
     if (viewport) {
-      dispatch(wrapTo(MAP_ID, updateMap({...viewport, pitch: 0, bearing: 0})));
+      dispatch(wrapTo(MAP_ID, updateMap({...viewport, bearing: 0})));
     }
   }, [dispatch, level, region, siteItem]);
 
@@ -568,7 +576,8 @@ function MapPanel({
     if (lastClick.current === key) return;
     lastClick.current = key;
     if (clicked.layer?.id === REGION_LAYER_ID) {
-      const selected = regions[clicked.index];
+      const regionIndex = clicked.object?.points?.[0]?.index ?? clicked.index;
+      const selected = regions[regionIndex];
       if (selected) onRegion(selected.id);
     }
     if (clicked.layer?.id === SITE_LAYER_ID) {
@@ -582,10 +591,15 @@ function MapPanel({
       <div className="map-overlay">
         <span className="map-kicker">{level === 'country' ? 'Regional network' : level === 'region' ? 'Cinema locations' : 'Selected site'}</span>
         <strong>{level === 'country' ? 'New Zealand' : siteItem?.name ?? region?.name}</strong>
-        <span>Click a marker to drill into operations</span>
+        <span>{level === 'country' ? 'Click a hexagon to drill into operations' : 'Click a marker to drill into operations'}</span>
       </div>
       <div className="map-legend" aria-label="Map legend">
-        <span><i className={level === 'country' ? 'legend-region' : 'legend-site'} /> Marker size = weekly gross</span>
+        <span>
+          <i className={level === 'country' ? 'legend-region' : 'legend-site'} />
+          {level === 'country'
+            ? 'Hexagon color and height = weekly gross'
+            : 'Marker size = weekly gross'}
+        </span>
       </div>
       <KeplerGl mapboxApiAccessToken="" id={MAP_ID} width={width} height={MAP_HEIGHT} />
     </section>
