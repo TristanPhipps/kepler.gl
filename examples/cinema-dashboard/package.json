@@ -1,0 +1,36 @@
+{
+  "name": "kepler-cinema-dashboard",
+  "version": "0.0.1",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.mjs --build",
+    "start": "node esbuild.config.mjs --start",
+    "test": "node --experimental-strip-types src/data.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@deck.gl/mapbox": "9.3.1",
+    "@kepler.gl/actions": "^3.3.0-alpha.6",
+    "@kepler.gl/components": "^3.3.0-alpha.6",
+    "@kepler.gl/processors": "^3.3.0-alpha.6",
+    "@kepler.gl/reducers": "^3.3.0-alpha.6",
+    "@kepler.gl/utils": "^3.3.0-alpha.6",
+    "assert": "^1.4.0",
+    "events": "^3.3.0",
+    "maplibre-gl": "^4.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-redux": "^9.1.0",
+    "redux": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "esbuild": "^0.25.0",
+    "esbuild-plugin-copy": "^2.1.1",
+    "typescript": "^5.5.0"
+  }
+}
