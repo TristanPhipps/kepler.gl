@@ -78,6 +78,7 @@
     "start:custom-map-style": "yarn install-and-start examples/custom-map-style start-local",
     "start:custom-layer": "yarn install-and-start examples/custom-layer start",
     "start:live-data": "node examples/live-data/esbuild.config.mjs --start",
+    "start:cinema-dashboard": "yarn install-and-start examples/cinema-dashboard start",
     "start:node-app": "yarn install-and-start examples/node-app start-local",
     "start:web": "yarn install-and-start website start",
     "start:https": "yarn install-and-start examples/demo-app start-local-https",
