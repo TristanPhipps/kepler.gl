@@ -9,8 +9,8 @@ API token, or external credentials are required.
 
 ## Features
 
-- Country-level hexagon performance map → region/city → cinema-site drill-down
-- Synchronized map markers, ranked lists, breadcrumb navigation, and camera state
+- Hexagon performance maps across country, region/city, and cinema-site drill-down
+- Synchronized map hexagons, ranked lists, breadcrumb navigation, and camera state
 - Commercial KPIs, trends, regional and site rankings, concessions, alerts, and open tasks
 - Site film performance and operational health
 - NZD, percentage, and week-over-week formatting
