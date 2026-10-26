@@ -12,6 +12,7 @@ import './styles.css';
 import KeplerGl from '@kepler.gl/components';
 import {
   addDataToMap,
+  layerConfigChange,
   layerToggleVisibility,
   updateMap,
   wrapTo
@@ -51,7 +52,13 @@ type KeplerRootState = {
   keplerGl: Record<
     string,
     {
-      visState: {clicked: ClickedInfo};
+      visState: {
+        clicked: ClickedInfo;
+        layers: Array<{
+          id: string;
+          config: {visConfig: Record<string, unknown>};
+        }>;
+      };
     }
   >;
 };
@@ -131,28 +138,38 @@ const mapConfig = {
         },
         {
           id: SITE_LAYER_ID,
-          type: 'point',
+          type: 'hexagon',
           config: {
             dataId: 'cinema-sites',
-            label: 'Cinema sites',
+            label: 'Cinema site hexagons',
             color: [239, 77, 113] as [number, number, number],
             columns: {lat: 'latitude', lng: 'longitude'},
             isVisible: false,
             visConfig: {
-              radius: 14,
-              fixedRadius: false,
-              opacity: 0.95,
-              outline: true,
-              thickness: 2,
-              strokeColor: [255, 219, 227] as [number, number, number],
-              allowHover: true
+              opacity: 0.88,
+              worldUnitSize: 2.5,
+              resolution: 8,
+              colorRange: {
+                name: 'Cinema rose',
+                type: 'sequential',
+                category: 'Custom',
+                colors: ['#351725', '#66213B', '#9C2D50', '#C83B60', '#EF4D71', '#FFADBF']
+              },
+              coverage: 0.86,
+              sizeRange: [0, 500],
+              percentile: [0, 100],
+              elevationPercentile: [0, 100],
+              elevationScale: 8,
+              colorAggregation: 'average',
+              sizeAggregation: 'average',
+              enable3d: true
             }
           },
           visualChannels: {
-            colorField: null,
+            colorField: {name: 'gross', type: 'integer'},
             colorScale: 'quantile',
             sizeField: {name: 'gross', type: 'integer'},
-            sizeScale: 'sqrt'
+            sizeScale: 'linear'
           }
         }
       ],
@@ -163,8 +180,6 @@ const mapConfig = {
               {name: 'gross', format: null}
             ],
             'cinema-sites': [
-              {name: 'label', format: null},
-              {name: 'detail', format: null},
               {name: 'gross', format: null},
               {name: 'occupancy', format: null}
             ]
@@ -534,6 +549,9 @@ function MapPanel({
   const clicked = useSelector(
     (state: KeplerRootState) => state.keplerGl[MAP_ID]?.visState?.clicked
   );
+  const siteLayer = useSelector((state: KeplerRootState) =>
+    state.keplerGl[MAP_ID]?.visState?.layers?.find(layer => layer.id === SITE_LAYER_ID)
+  );
   const lastClick = useRef('');
   const {ref, width} = useElementWidth<HTMLDivElement>();
 
@@ -557,13 +575,33 @@ function MapPanel({
   }, [dispatch, level]);
 
   useEffect(() => {
+    if (!siteLayer) return;
+    const worldUnitSize = level === 'site' ? 0.35 : 2.5;
+    const elevationScale = level === 'site' ? 0.45 : 8;
+    if (
+      siteLayer.config.visConfig.worldUnitSize === worldUnitSize &&
+      siteLayer.config.visConfig.elevationScale === elevationScale
+    ) {
+      return;
+    }
+    dispatch(
+      wrapTo(
+        MAP_ID,
+        layerConfigChange(siteLayer as Parameters<typeof layerConfigChange>[0], {
+          visConfig: {...siteLayer.config.visConfig, worldUnitSize, elevationScale}
+        } as Parameters<typeof layerConfigChange>[1])
+      )
+    );
+  }, [dispatch, level, siteLayer]);
+
+  useEffect(() => {
     const viewport =
       level === 'country'
         ? {latitude: -41.2, longitude: 172.7, zoom: 4.35, pitch: 35}
         : siteItem
-          ? {latitude: siteItem.latitude, longitude: siteItem.longitude, zoom: 12.8, pitch: 0}
+          ? {latitude: siteItem.latitude, longitude: siteItem.longitude, zoom: 12.2, pitch: 40}
           : region
-            ? {latitude: region.latitude, longitude: region.longitude, zoom: 8, pitch: 0}
+            ? {latitude: region.latitude, longitude: region.longitude, zoom: 8, pitch: 35}
             : null;
     if (viewport) {
       dispatch(wrapTo(MAP_ID, updateMap({...viewport, bearing: 0})));
@@ -581,7 +619,8 @@ function MapPanel({
       if (selected) onRegion(selected.id);
     }
     if (clicked.layer?.id === SITE_LAYER_ID) {
-      const selected = cinemaSites[clicked.index];
+      const siteIndex = clicked.object?.points?.[0]?.index ?? clicked.index;
+      const selected = cinemaSites[siteIndex];
       if (selected && (!region || selected.regionId === region.id)) onSite(selected.id);
     }
   }, [clicked, onRegion, onSite, region]);
@@ -591,14 +630,12 @@ function MapPanel({
       <div className="map-overlay">
         <span className="map-kicker">{level === 'country' ? 'Regional network' : level === 'region' ? 'Cinema locations' : 'Selected site'}</span>
         <strong>{level === 'country' ? 'New Zealand' : siteItem?.name ?? region?.name}</strong>
-        <span>{level === 'country' ? 'Click a hexagon to drill into operations' : 'Click a marker to drill into operations'}</span>
+        <span>Click a hexagon to drill into operations</span>
       </div>
       <div className="map-legend" aria-label="Map legend">
         <span>
           <i className={level === 'country' ? 'legend-region' : 'legend-site'} />
-          {level === 'country'
-            ? 'Hexagon color and height = weekly gross'
-            : 'Marker size = weekly gross'}
+          Hexagon color and height = weekly gross
         </span>
       </div>
       <KeplerGl mapboxApiAccessToken="" id={MAP_ID} width={width} height={MAP_HEIGHT} />
